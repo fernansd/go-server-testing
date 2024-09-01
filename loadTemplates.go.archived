@@ -1,0 +1,10 @@
+package main
+
+import "html/template"
+
+const TMPL_METRICS_FILE = "template/metrics.tmpl.html"
+var TmplMetrics template.Template
+
+func LoadTemplates() {
+	TmplMetrics, err := template.New(TMPL_METRICS_FILE).ParseFiles(TMPL_METRICS_FILE)	
+}
