@@ -37,10 +37,25 @@ func (c *Chirps) NewChirps() {
 	c.Data = make(map[int]Chirp)
 }
 
+type User struct {
+	Id int `json:"id"`
+	Email string `json:"email"`
+}
+
+type Users struct {
+	UserData map[int]User `json:"users"`
+	UserId int `json:"-"`
+}
+
+func (u *Users) NewUsers() {
+	u.UserData = make(map[int]User)
+}
+
 type DiskDB struct {
 	filename string
 	mx sync.Mutex
 	Chirps
+	Users
 }
 
 func (db *DiskDB) loadSampleDB() error {
@@ -63,7 +78,7 @@ func (db *DiskDB) loadSampleDB() error {
 func (db *DiskDB) WriteToDisk() error {
 	db.mx.Lock()
 	defer db.mx.Unlock()
-	jsonData, err := json.Marshal(&db.Data)
+	jsonData, err := json.Marshal(&db)
 	if err != nil {
 		return fmt.Errorf("ERROR saving DB to disk: %w", err)
 	}
@@ -137,6 +152,28 @@ func (db *DiskDB) AddChirp(body string) (Chirp, error) {
 	return chirp, nil
 }
 
+func (db *DiskDB) AddUser(email string) (User, error) {
+	db.mx.Lock()
+	id := db.UserId
+	user := User{
+		Id: id,
+		Email: email,
+	}
+	db.UserData[id] = user
+	db.mx.Unlock()
+	db.WriteToDisk()
+	db.UserId += 1
+	return user, nil
+}
+
+func (db *DiskDB) DropDB() {
+	db.NewChirps()
+	db.NewUsers()
+	db.NextId = 1
+	db.UserId = 1
+	db.WriteToDisk()
+}
+
 func (db *DiskDB) InitDB() error {
 	createDB := false
 	db.filename = FILENAME
@@ -176,11 +213,15 @@ func (db *DiskDB) InitDB() error {
 		}
 		log.Printf("INFO. Loaded sample data into DB")
 		log.Printf("INFO. Cleaning database")
-		db.Data = make(map[int]Chirp)
+		//db.Data = make(map[int]Chirp)
+		db.NewChirps()
+		db.NewUsers()
 		db.NextId = 1
+		db.UserId = 1
 		db.WriteToDisk()
 	} else {
 		err := db.loadChirps(data)
+		db.NewUsers()
 		if err != nil {
 			log.Printf("ERROR. Can't load DB: %s", err)
 		}
@@ -196,6 +237,17 @@ func (db *DiskDB) InitDB() error {
 		db.NextId = highestId + 1
 	} else {
 		db.NextId = 1
+	}
+	if len(db.UserData) > 0 {
+		highestId := 1
+		for k, _ := range db.UserData {
+			if k > highestId {
+				highestId = k
+			}
+		}
+		db.UserId = highestId + 1
+	} else {
+		db.UserId = 1
 	}
 
 	//fmt.Println("CURRENT DB STATE:", db.Data)

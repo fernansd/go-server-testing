@@ -19,8 +19,14 @@ function get_chirps() {
 	curl -vvv "$THOST:$TPORT/api/chirps"
 }
 
-function hola() {
-	echo "hola"
+function post_user() {
+	echo "<> POST USER"
+	curl -vvv -X POST "$THOST:$TPORT/api/users" -d "$USER"
+}
+
+function delete_db() {
+	echo "<> DELETE DB"
+	curl -vvv -X DELETE "$THOST:$TPORT/api/db"
 }
 
 function all() {

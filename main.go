@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"encoding/json"
 	"strings"
+	"flag"
 )
 
 const PORT = 8080
@@ -75,6 +76,9 @@ func cleanProfane(str string) string {
 }
 
 func main() {
+	// CLI Argument parsing
+	debugFlag := flag.Bool("debug", false, "Enable debug mode")
+	flag.Parse()
 	/*
 	 * Setup
 	 */
@@ -92,6 +96,9 @@ func main() {
 		os.Exit(-1)
 	}
 	defer db.Close()
+	if *debugFlag {
+		db.DropDB()
+	}
 
 	/* 
 	 * ROUTES configuration
@@ -210,6 +217,37 @@ func main() {
 			w.Write([]byte("Method Not Allowed\n\n"))
 		}
 		return
+	})
+	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
+		decoder := json.NewDecoder(r.Body)
+		defer r.Body.Close()
+		user := User{}
+		err := decoder.Decode(&user)
+		if err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte("Error decoding request body"))
+			return
+		}
+		created_user, err := db.AddUser(user.Email)
+		if err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte("Error adding user"))
+			return
+		}
+		userJson, err := json.Marshal(created_user)
+		if err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte("Error creating response body, user created"))
+			return
+		}
+		w.Header().Set("Content-Type","application/json")
+		w.WriteHeader(201)
+		w.Write(userJson)
+	})
+	mux.HandleFunc("DELETE /api/db", func(w http.ResponseWriter, r *http.Request) {
+		db.DropDB()
+		w.WriteHeader(200)
+		w.Write([]byte("Creared all data in database"))
 	})
 
 	mux.HandleFunc("/admin/metrics", apiCfg.handleMetrics)
