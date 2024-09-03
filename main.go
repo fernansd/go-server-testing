@@ -97,7 +97,10 @@ func main() {
 	}
 	defer db.Close()
 	if *debugFlag {
+		glog.Printf("INFO. Debug mode is ENABLED")
 		db.DropDB()
+	} else {
+		glog.Printf("INFO. Debug mode is DISABLED")
 	}
 
 	/* 

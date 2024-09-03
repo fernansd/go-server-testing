@@ -82,17 +82,21 @@ func (db *DiskDB) WriteToDisk() error {
 	if err != nil {
 		return fmt.Errorf("ERROR saving DB to disk: %w", err)
 	}
-	file, err := os.Open(FILENAME)
-	defer file.Close()
+//	file, err := os.Open(FILENAME)
+//	defer file.Close()
+//	if err != nil {
+//		return fmt.Errorf("ERROR opening DB for write: %w", err)
+//	}
+	log.Printf("DEBUG. Prepared data to write to disk: %s", jsonData)
+	err =os.WriteFile(FILENAME, jsonData, 0660)
 	if err != nil {
-		return fmt.Errorf("ERROR opening DB for write: %w", err)
+		return fmt.Errorf("ERROR. Couldn't write data to disk: %w", err)
 	}
-	file.Write(jsonData)
-	fmt.Printf("DEBUG. Wrote DB to disk: %s", FILENAME)
+	log.Printf("DEBUG. Wrote DB to disk: %s", FILENAME)
 	return nil
 }
 
-func (db *DiskDB) loadChirps(data []byte) error {
+func (db *DiskDB) loadData(data []byte) error {
 	db.mx.Lock()
 	defer db.mx.Unlock()
 	if strings.TrimSpace(string(data)) == "" {
@@ -100,13 +104,11 @@ func (db *DiskDB) loadChirps(data []byte) error {
 		log.Printf("DEBUG. Loaded empty DB")
 		return nil
 	}
-	chirps := Chirps{}
-	err := json.Unmarshal(data, &chirps.Data)
+	err := json.Unmarshal(data, &db)
 	if err != nil {
 		log.Printf("ERROR. Can't load chirps: %s", err)
 		return err
 	}
-	db.Data = chirps.Data
 	return nil
 }
 
@@ -147,7 +149,10 @@ func (db *DiskDB) AddChirp(body string) (Chirp, error) {
 	}
 	db.Data[id] = chirp
 	db.mx.Unlock()
-	db.WriteToDisk()
+	err := db.WriteToDisk()
+	if err != nil {
+		log.Printf("ERROR. %s", err)
+	}
 	db.NextId += 1
 	return chirp, nil
 }
@@ -186,6 +191,7 @@ func (db *DiskDB) InitDB() error {
 		log.Printf("ERROR. Unknown error opening DB file: %w", err)
 		return err
 	}
+	log.Printf("DEBUG. createDB = %b", createDB)
 	if createDB {
 		file, err := os.Create(FILENAME)
 		if err != nil {
@@ -220,7 +226,8 @@ func (db *DiskDB) InitDB() error {
 		db.UserId = 1
 		db.WriteToDisk()
 	} else {
-		err := db.loadChirps(data)
+		log.Printf("DEBUG. Loading chirps with read data: %s", data)
+		err := db.loadData(data)
 		db.NewUsers()
 		if err != nil {
 			log.Printf("ERROR. Can't load DB: %s", err)
