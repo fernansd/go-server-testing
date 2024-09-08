@@ -3,3 +3,4 @@ database.json
 error_testing
 temp-package
 go-server-exercise
+.env
