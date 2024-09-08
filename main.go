@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"strings"
 	"flag"
+	"errors"
 )
 
 const PORT = 8080
@@ -221,6 +222,7 @@ func main() {
 		}
 		return
 	})
+
 	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
 		decoder := json.NewDecoder(r.Body)
 		defer r.Body.Close()
@@ -231,12 +233,13 @@ func main() {
 			w.Write([]byte("Error decoding request body"))
 			return
 		}
-		created_user, err := db.AddUser(user.Email)
+		created_user, err := db.AddUser(user)
 		if err != nil {
 			w.WriteHeader(500)
 			w.Write([]byte("Error adding user"))
 			return
 		}
+		created_user.MaskSensitive()
 		userJson, err := json.Marshal(created_user)
 		if err != nil {
 			w.WriteHeader(500)
@@ -247,6 +250,38 @@ func main() {
 		w.WriteHeader(201)
 		w.Write(userJson)
 	})
+
+	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
+		user := User{}
+		err := json.NewDecoder(r.Body).Decode(&user)
+		if err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte("Error decoding request body"))
+			return
+		}
+		pass_ok, err := db.CheckUserPassword(user)
+		if errors.Is(err, ErrUserNotFound) {
+			w.WriteHeader(404)
+			w.Write([]byte("User not found"))
+			return
+		} else if err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte("internal server error"))
+			return
+		}
+		if pass_ok {
+			w.WriteHeader(200)
+			stored_user, _ := db.GetUserByEmail(user.Email)
+			stored_user.MaskSensitive()
+			userJson, _ := json.Marshal(stored_user)
+			w.Write(userJson)
+			return
+		}
+		w.WriteHeader(401)
+		w.Write([]byte("Unauthorized"))
+		return
+	})
+
 	mux.HandleFunc("DELETE /api/db", func(w http.ResponseWriter, r *http.Request) {
 		db.DropDB()
 		w.WriteHeader(200)
