@@ -8,6 +8,7 @@ import "encoding/json"
 import "errors"
 import "strings"
 import "sort"
+import "golang.org/x/crypto/bcrypt"
 
 const FILENAME = "./database.json"
 const DEFAULT_DB_DATA = `{
@@ -22,6 +23,11 @@ const DEFAULT_DB_DATA = `{
     }
   }
 }`
+const BCRYPT_WORK_FACTOR = 10
+
+var (
+	ErrUserNotFound = errors.New("user not found")
+)
 
 type Chirp struct {
 	Id int `json:"id"`
@@ -37,9 +43,20 @@ func (c *Chirps) NewChirps() {
 	c.Data = make(map[int]Chirp)
 }
 
-type User struct {
+type UserInfo struct {
 	Id int `json:"id"`
 	Email string `json:"email"`
+	Password string `json:"password,omitempty"`
+}
+
+type User struct {
+	HashedPassword string `json:"passhash,omitempty"`
+	UserInfo
+}
+
+func (u *User) MaskSensitive() {
+	u.Password = ""
+	u.HashedPassword = ""
 }
 
 type Users struct {
@@ -157,18 +174,64 @@ func (db *DiskDB) AddChirp(body string) (Chirp, error) {
 	return chirp, nil
 }
 
-func (db *DiskDB) AddUser(email string) (User, error) {
+// @param user : User struct without the id field filled. Only the user data
+func (db *DiskDB) AddUser(user User) (User, error) {
 	db.mx.Lock()
 	id := db.UserId
-	user := User{
-		Id: id,
-		Email: email,
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), BCRYPT_WORK_FACTOR)
+	if err != nil {
+		return User{}, fmt.Errorf("AddUser(_): %w", err)
 	}
-	db.UserData[id] = user
+	new_user := User{
+		HashedPassword: string(hashedPassword),
+		UserInfo: UserInfo {
+			Id: id,
+			Email: user.Email,
+		},
+	}
+	db.UserData[id] = new_user
 	db.mx.Unlock()
 	db.WriteToDisk()
 	db.UserId += 1
-	return user, nil
+	new_user.MaskSensitive()
+	return new_user, nil
+}
+
+func (db *DiskDB) CheckUserPassword(user User) (pass_ok bool, err error) {
+	stored_user := User{}
+	found := false
+	for _, v := range db.UserData {
+		if user.Email == v.Email {
+			stored_user = v
+			found = true
+			break
+		}
+	}
+	if !found  {
+		return false, ErrUserNotFound
+	}
+	err = bcrypt.CompareHashAndPassword([]byte(stored_user.HashedPassword), []byte(user.Password))
+	if err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (db *DiskDB) GetUserByEmail(email string) (User, error) {
+	stored_user := User{}
+	found := false
+	for _, v := range db.UserData {
+		if email == v.Email {
+			stored_user = v
+			found = true
+			break
+		}
+	}
+	if !found  {
+		return User{}, ErrUserNotFound
+	}
+	stored_user.MaskSensitive()
+	return stored_user, nil
 }
 
 func (db *DiskDB) DropDB() {
